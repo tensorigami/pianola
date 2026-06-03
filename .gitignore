@@ -1,0 +1,35 @@
+.DS_Store
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+
+# Virtual environments
+.venv
+
+# Tensor binaries
+*.safetensors
+*.pt
+
+# HF fetched (reproducible via populate.py)
+models/*/*/config.toml
+models/*/*/weights/
+models/*/tokenizer.json
+models/*/tokenizer_config.json
+
+# Rust build output
+catform/target/
+*.so
+
+# macOS debug symbols
+*.dSYM/
+
+# mdBook build output
+book/book/
+book/.mdbook-tikz-cache/
+.env

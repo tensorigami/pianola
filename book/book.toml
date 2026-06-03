@@ -1,0 +1,21 @@
+[book]
+title = "Structure and Execution of Language Models"
+authors = ["tensorigami"]
+language = "en"
+src = "src"
+
+[build]
+create-missing = false
+
+[preprocessor.tikz]
+command = "mdbook-tikz"
+optional = true
+before = ["katex"]
+
+[preprocessor.katex]
+
+[output.html]
+additional-css = ["pianola.css"]
+additional-js = ["catform.js", "pianola.js"]
+git-repository-url = "https://github.com/tensorigami/pianola"
+edit-url-template = "https://github.com/tensorigami/pianola/edit/main/book/{path}"
