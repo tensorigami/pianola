@@ -108,7 +108,7 @@ What is your favorite prime?<|im_end|>
 57<|im_end|>
 ```
 
-These delimiters fit a convention called [**ChatML**](https://github.com/openai/openai-python/blob/main/chatml.md). Other model families may use different delimiters but the same principle applies. The template is model-specific: it is distributed with the model. Crucially, the model is *trained* on data formatted with its template, so the template is not an independent formatting choice, but rather is baked into the model and cannot be swapped freely. One can, however, also feed text without any delimiters to the model.
+These delimiters fit a convention called [**ChatML**](https://github.com/openai/openai-python/blob/release-v0.28.1/chatml.md). Other model families may use different delimiters but the same principle applies. The template is model-specific: it is distributed with the model. Crucially, the model is *trained* on data formatted with its template, so the template is not an independent formatting choice, but rather is baked into the model and cannot be swapped freely. One can, however, also feed text without any delimiters to the model.
 
 Once the model is given raw text, it can then `generate` new raw text! This generated text may carry its own tagged structure. For instance, Qwen3's outputs, such as the one shown earlier, begin with **chain of thought** reasoning, demarcated between the tags `<think>` and `</think>`. Once generation is finished, the generated text gets **parsed** back to the `Message` format---for now, just by setting the `role` to `"assistant"` and the `content` to the output text. We have thus defined the function body of `infer`:
 
