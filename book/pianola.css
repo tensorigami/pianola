@@ -1,0 +1,247 @@
+/* Pianola book theme — layered on top of mdBook defaults */
+
+/* ── Fonts ─────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap");
+
+/* ── Typography ────────────────────────────────────────────────── */
+
+html {
+    font-family: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    scroll-behavior: smooth;
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+code {
+    font-family: "Fira Code", "Source Code Pro", Consolas, "Ubuntu Mono",
+                 Menlo, "DejaVu Sans Mono", monospace !important;
+    font-feature-settings: "liga" 1, "calt" 1;
+}
+
+/* ── Content area ──────────────────────────────────────────────── */
+
+.content main {
+    max-width: 800px;
+}
+
+.content p,
+.content ol,
+.content ul {
+    line-height: 1.75;
+}
+
+.content a {
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+}
+.content a:hover {
+    text-decoration: none;
+    border-bottom-color: var(--links);
+}
+
+/* ── Headings ──────────────────────────────────────────────────── */
+
+h1 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+h2, h3 {
+    margin-block-start: 2.2em;
+    margin-block-end: 0.6em;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+h4, h5 {
+    margin-block-start: 1.6em;
+    margin-block-end: 0.4em;
+    font-weight: 600;
+}
+
+h2 + p, h3 + p, h4 + p, h5 + p {
+    margin-block-start: 0;
+}
+
+/* Subtle separator above h2 */
+.content h2 {
+    padding-block-start: 0.8em;
+    border-top: 1px solid var(--table-border-color);
+}
+/* Don't border the first h2 on the page */
+.content main > .header:first-child + .header h2,
+.content main > h2:first-of-type {
+    border-top: none;
+    padding-block-start: 0;
+}
+
+/* ── Code blocks ───────────────────────────────────────────────── */
+
+pre {
+    border-radius: 6px;
+    border: 1px solid var(--table-border-color);
+}
+
+pre > code {
+    font-size: 0.85em;
+    line-height: 1.6;
+}
+
+/* Inline code */
+:not(pre) > .hljs {
+    border-radius: 4px;
+    padding: 0.15em 0.4em;
+    font-size: 0.88em;
+}
+
+/* ── Math (KaTeX) ──────────────────────────────────────────────── */
+
+.katex-display {
+    margin: 1.5em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5em 0;
+}
+
+/* Display math: slightly larger for readability */
+.katex-display > .katex {
+    font-size: 1.15em;
+}
+
+/* ── Tables ────────────────────────────────────────────────────── */
+
+table {
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 0.92em;
+}
+
+table td, table th {
+    padding: 6px 16px;
+}
+
+/* ── Blockquotes ───────────────────────────────────────────────── */
+
+blockquote {
+    border-radius: 4px;
+    font-size: 0.95em;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+
+.sidebar-iframe-inner,
+.sidebar .sidebar-scrollbox {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Nested TOC hierarchy */
+.chapter ol {
+    padding-inline-start: 16px;
+}
+
+.chapter ol ol {
+    padding-inline-start: 14px;
+}
+
+/* Sub-sections: smaller, lighter */
+.chapter li.chapter-item ol li a {
+    font-size: 0.9em;
+    opacity: 0.75;
+}
+
+.chapter li.chapter-item ol li a:hover,
+.chapter li.chapter-item ol li a.active {
+    opacity: 1;
+}
+
+/* Part titles */
+.chapter li.part-title {
+    text-transform: uppercase;
+    font-size: 0.78em;
+    letter-spacing: 0.08em;
+    opacity: 0.6;
+    margin-top: 1.2em;
+}
+
+/* ── Scroll-spy ────────────────────────────────────────────────── */
+
+.chapter li a.scroll-active {
+    color: var(--sidebar-active);
+    font-weight: 600;
+}
+
+/* ── TikZ diagrams ─────────────────────────────────────────────── */
+
+svg.tikz {
+    display: block;
+    margin: 1.5em auto;
+    max-width: 100%;
+}
+
+/* ── Catform syntax colors ─────────────────────────────────────── */
+/* Override hljs defaults so each SYNTAX.md role gets a distinct color.
+   Default hljs themes group type/literal/built_in/number into one bucket. */
+
+/* Light + Rust themes */
+html.light code.language-catform .hljs-type,
+html.rust code.language-catform .hljs-type {
+    color: #007070;  /* teal — dtype (§3) */
+}
+html.light code.language-catform .hljs-meta,
+html.rust code.language-catform .hljs-meta {
+    color: #2a8a8a;  /* lighter teal — shape dims (§4) */
+}
+html.light code.language-catform .hljs-attr,
+html.rust code.language-catform .hljs-attr {
+    color: #8250df;  /* purple — param. prefix (§5) */
+}
+html.light code.language-catform .hljs-literal,
+html.rust code.language-catform .hljs-literal {
+    color: #7a3e00;  /* brown — param values, weight refs, literals */
+}
+
+/* Coal + Navy dark themes */
+html.coal code.language-catform .hljs-type,
+html.navy code.language-catform .hljs-type {
+    color: #56b6c2;  /* teal — dtype */
+}
+html.coal code.language-catform .hljs-meta,
+html.navy code.language-catform .hljs-meta {
+    color: #7ec8cf;  /* lighter teal — shape dims */
+}
+html.coal code.language-catform .hljs-attr,
+html.navy code.language-catform .hljs-attr {
+    color: #c678dd;  /* purple — param. prefix */
+}
+html.coal code.language-catform .hljs-literal,
+html.navy code.language-catform .hljs-literal {
+    color: #d19a66;  /* warm brown — param values, weight refs, literals */
+}
+
+/* Ayu dark theme */
+html.ayu code.language-catform .hljs-type {
+    color: #59c2ff;  /* bright blue — dtype */
+}
+html.ayu code.language-catform .hljs-meta {
+    color: #73b8ff;  /* lighter blue — shape dims */
+}
+html.ayu code.language-catform .hljs-attr {
+    color: #d2a6ff;  /* purple — param. prefix */
+}
+html.ayu code.language-catform .hljs-literal {
+    color: #e6b673;  /* warm brown — param values, weight refs, literals */
+}
+
+/* ── Transitions ───────────────────────────────────────────────── */
+
+.content a,
+.chapter li a,
+pre > .buttons {
+    transition: all 0.15s ease;
+}
