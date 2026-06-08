@@ -1,0 +1,212 @@
+main(weights: *, state: *, tokens: i32[N]) -> (state: *, logits: bf16[param.vocab]) {
+  emb   : bf16[N, param.hidden] = call[embed](tokens, weights.embedding)
+  acts  : bf16[N, param.hidden],
+  state : *                     = call[transformer](emb, weights.transformer, state)
+  logits: bf16[param.vocab]     = call[unembed](acts, weights.lm_head)
+}
+
+embed(tokens: i32[N], w: bf16[param.vocab, param.hidden]) -> (x: bf16[N, param.hidden]) {
+  x: bf16[N, param.hidden] = read["v d -> _ d"](w, tokens)
+}
+
+unembed(
+  x: bf16[N, param.hidden],
+  w: bf16[param.vocab, param.hidden]
+) -> (logits: bf16[param.vocab]) {
+  last  : bf16[param.hidden] = call[final](x)
+  logits: bf16[param.vocab]  = contract["v d, d -> v"](w, last)
+}
+
+final(x: bf16[N, param.hidden]) -> (last: bf16[param.hidden]) {
+  one : i32[]              = literal(1)
+  idx : i32[]              = map[sub](N, one)
+  last: bf16[param.hidden] = read["_ d -> d"](x, idx)
+}
+
+transformer(
+  x      : bf16[N, param.hidden],
+  weights: *,
+  state  : *
+) -> (out: bf16[N, param.hidden], state: *) {
+  pos       : i32[N]                                    = iota(state.seen)
+  rot       : bf16[2, 2, N, param.rope_dim]             = call[build_rot](pos)
+  mask      : bf16[N, MAX]                              = call[build_mask](pos)
+  x         : bf16[N, param.hidden],
+  state.k.* : bf16[param.kv_heads, MAX, param.head_dim],
+  state.v.* : bf16[param.kv_heads, MAX, param.head_dim] = loop[layer, param.layers](x, rot, mask, pos, weights.layer.*, state.k.*, state.v.*)
+  state.seen: i32[]                                     = map[add](state.seen, N)
+  out       : bf16[N, param.hidden]                     = call[rmsnorm](x, weights.norm)
+}
+
+layer(
+  x      : bf16[N, param.hidden],
+  rot    : bf16[2, 2, N, param.rope_dim],
+  mask   : bf16[N, MAX],
+  pos    : i32[N],
+  weights: *,
+  k_buf  : bf16[param.kv_heads, MAX, param.head_dim],
+  v_buf  : bf16[param.kv_heads, MAX, param.head_dim]
+) -> (out: bf16[N, param.hidden], k_buf: bf16[param.kv_heads, MAX, param.head_dim], v_buf: bf16[param.kv_heads, MAX, param.head_dim]) {
+  xn   : bf16[N, param.hidden]                     = call[rmsnorm](x, weights.ln1)
+  attn : bf16[N, param.hidden],
+  k_buf: bf16[param.kv_heads, MAX, param.head_dim],
+  v_buf: bf16[param.kv_heads, MAX, param.head_dim] = call[attention](xn, mask, rot, pos, k_buf, v_buf, weights.attn)
+  x_res: bf16[N, param.hidden]                     = map[add](x, attn)
+  xn2  : bf16[N, param.hidden]                     = call[rmsnorm](x_res, weights.ln2)
+  ffn  : bf16[N, param.hidden]                     = call[gated_ffn](xn2, weights.ffn)
+  out  : bf16[N, param.hidden]                     = map[add](x_res, ffn)
+}
+
+gated_ffn(
+  x   : bf16[N, param.hidden],
+  gate: bf16[param.hidden, param.ffn_dim],
+  up  : bf16[param.hidden, param.ffn_dim],
+  down: bf16[param.ffn_dim, param.hidden]
+) -> (out: bf16[N, param.hidden]) {
+  g  : bf16[N, param.ffn_dim] = contract["... n d, d f -> ... n f"](x, gate)
+  u  : bf16[N, param.ffn_dim] = contract["... n d, d f -> ... n f"](x, up)
+  h  : bf16[N, param.ffn_dim] = call[swiglu](g, u)
+  out: bf16[N, param.hidden]  = contract["... n f, f d -> ... n d"](h, down)
+}
+
+swiglu(g: bf16[..., F], u: bf16[..., F]) -> (out: bf16[..., F]) {
+  act: bf16[..., F] = map[silu](g)
+  out: bf16[..., F] = map[mul](act, u)
+}
+
+attention(
+  x     : bf16[N, param.hidden],
+  mask  : bf16[N, MAX],
+  rot   : bf16[2, 2, N, param.rope_dim],
+  pos   : i32[N],
+  k_buf : bf16[param.kv_heads, MAX, param.head_dim],
+  v_buf : bf16[param.kv_heads, MAX, param.head_dim],
+  q_norm: bf16[param.head_dim],
+  k_norm: bf16[param.head_dim],
+  wq    : bf16[param.hidden, param.heads, param.head_dim],
+  wk    : bf16[param.hidden, param.kv_heads, param.head_dim],
+  wv    : bf16[param.hidden, param.kv_heads, param.head_dim],
+  wo    : bf16[param.head_dim, param.heads, param.hidden]
+) -> (out: bf16[N, param.hidden], k_buf: bf16[param.kv_heads, MAX, param.head_dim], v_buf: bf16[param.kv_heads, MAX, param.head_dim]) {
+  // Q K V projections
+  q    : bf16[param.heads, N, param.head_dim]      = contract["... n d, d h e -> ... h n e"](x, wq)
+  k    : bf16[param.kv_heads, N, param.head_dim]   = contract["... n d, d g e -> ... g n e"](x, wk)
+  v    : bf16[param.kv_heads, N, param.head_dim]   = contract["... n d, d g e -> ... g n e"](x, wv)
+
+  // QK-Norm
+  q_n  : bf16[param.heads, N, param.head_dim]      = call[rmsnorm](q, q_norm)
+  k_n  : bf16[param.kv_heads, N, param.head_dim]   = call[rmsnorm](k, k_norm)
+
+  // RoPE
+  q_r  : bf16[param.heads, N, param.head_dim]      = call[rope_rotate](q_n, rot)
+  k_r  : bf16[param.kv_heads, N, param.head_dim]   = call[rope_rotate](k_n, rot)
+
+  // KV Cache
+  k_buf: bf16[param.kv_heads, MAX, param.head_dim] = write["g _ e -> g max e", set](k_r, pos, k_buf)
+  v_buf: bf16[param.kv_heads, MAX, param.head_dim] = write["g _ e -> g max e", set](v, pos, v_buf)
+
+  // GQA
+  k_e  : bf16[param.heads, MAX, param.head_dim]    = tile["... g m e -> ... (g r) m e"](k_buf)
+  v_e  : bf16[param.heads, MAX, param.head_dim]    = tile["... g m e -> ... (g r) m e"](v_buf)
+
+  // Attend
+  attn : bf16[param.heads, N, param.head_dim]      = call[attend](q_r, k_e, v_e, mask)
+
+  // O projection
+  out  : bf16[N, param.hidden]                     = contract["... h n e, e h d -> ... n d"](attn, wo)
+}
+
+attend(
+  q   : bf16[..., N, h],
+  k   : bf16[..., M, h],
+  v   : bf16[..., M, h],
+  mask: bf16[N, M]
+) -> (val: bf16[..., N, h]) {
+  scores: bf16[..., N, M] = contract["... j h, ... i h -> ... j i"](q, k)
+  scaled: bf16[..., N, M] = call[head_scale](scores)
+  masked: bf16[..., N, M] = call[causal_mask](mask, scaled)
+  attn  : bf16[..., N, M] = call[softmax](masked)
+  val   : bf16[..., N, h] = contract["... j i, ... i h -> ... j h"](attn, v)
+}
+
+softmax(x: bf16[..., S]) -> (out: bf16[..., S]) {
+  x_f : f32[..., S]  = map[f32](x)
+  mx  : f32[..., 1]  = fold["... s -> ... 1", max](x_f)
+  mx_t: f32[..., S]  = tile["... 1 -> ... s"](mx)
+  sub : f32[..., S]  = map[sub](x_f, mx_t)
+  ex  : f32[..., S]  = map[exp](sub)
+  sm  : f32[..., 1]  = fold["... s -> ... 1", sum](ex)
+  sm_t: f32[..., S]  = tile["... 1 -> ... s"](sm)
+  pf  : f32[..., S]  = map[div](ex, sm_t)
+  out : bf16[..., S] = map[bf16](pf)
+}
+
+rmsnorm(x: bf16[..., D], w: bf16[D]) -> (out: bf16[..., D]) {
+  // upcast
+  x_f  : f32[..., D]  = map[f32](x)
+
+  // divide by the perturbed root mean square
+  sq   : f32[..., D]  = map[square](x_f)
+  var  : f32[..., 1]  = fold["... d -> ... 1", mean](sq)
+  eps_t: f32[..., 1]  = tile["-> ..."](param.rms_norm_eps)
+  ve   : f32[..., 1]  = map[add](var, eps_t)
+  rs   : f32[..., 1]  = map[rsqrt](ve)
+  rs_t : f32[..., D]  = tile["... 1 -> ... d"](rs)
+  xn   : f32[..., D]  = map[mul](x_f, rs_t)
+
+  // downcast
+  xb   : bf16[..., D] = map[bf16](xn)
+
+  // multiply by weight
+  w_t  : bf16[..., D] = tile["d -> ... d"](w)
+  out  : bf16[..., D] = map[mul](xb, w_t)
+}
+
+rope_rotate(
+  x  : bf16[..., N, param.head_dim],
+  rot: bf16[2, 2, N, param.rope_dim]
+) -> (out: bf16[..., N, param.head_dim]) {
+  pairs : bf16[..., N, param.rope_dim, 2] = view["... n (two d) -> ... n d two"](x)
+  result: bf16[..., N, param.rope_dim, 2] = contract["... n d two, two twop n d -> ... n d twop"](pairs, rot)
+  out   : bf16[..., N, param.head_dim]    = view["... n d two -> ... n (two d)"](result)
+}
+
+causal_mask(mask: bf16[N, M], scores: bf16[..., N, M]) -> (out: bf16[..., N, M]) {
+  mask_t: bf16[..., N, M] = tile["n m -> ... n m"](mask)
+  out   : bf16[..., N, M] = map[add](scores, mask_t)
+}
+
+head_scale(scores: bf16[..., N, M]) -> (out: bf16[..., N, M]) {
+  scale_t: bf16[..., N, M] = tile["-> ..."](param.attn_scale)
+  out    : bf16[..., N, M] = map[mul](scores, scale_t)
+}
+
+build_rot(pos: i32[N]) -> (rot: bf16[2, 2, N, param.rope_dim]) {
+  inv_freq: f32[param.rope_dim]           = call[compute_inv_freq]()
+  pos_f   : f32[N]                        = map[f32](pos)
+  angles  : f32[N, param.rope_dim]        = contract["n, d -> n d"](pos_f, inv_freq)
+  cs      : f32[N, param.rope_dim]        = map[cos](angles)
+  sn      : f32[N, param.rope_dim]        = map[sin](angles)
+  rot_I   : f32[2, 2]                     = literal([[1, 0], [0, 1]])
+  rot_J   : f32[2, 2]                     = literal([[0, 1], [-1, 0]])
+  c_mat   : f32[2, 2, N, param.rope_dim]  = contract["n d, two twop -> two twop n d"](cs, rot_I)
+  s_mat   : f32[2, 2, N, param.rope_dim]  = contract["n d, two twop -> two twop n d"](sn, rot_J)
+  rot_f   : f32[2, 2, N, param.rope_dim]  = map[add](c_mat, s_mat)
+  rot     : bf16[2, 2, N, param.rope_dim] = map[bf16](rot_f)
+}
+
+compute_inv_freq() -> (inv_freq: f32[param.rope_dim]) {
+  // inv_freq[k] = rope_step^k
+  k       : f32[param.rope_dim] = iota(0)
+  step_t  : f32[param.rope_dim] = tile["-> d"](param.rope_step)
+  inv_freq: f32[param.rope_dim] = map[pow](step_t, k)
+}
+
+build_mask(pos: i32[N]) -> (mask: bf16[N, MAX]) {
+  // mask = log(1[pos[i] >= s]): log(1)=0 visible, log(0)=-inf masked
+  slot    : i32[MAX]     = iota(0)
+  pos_col : i32[N, MAX]  = tile["n -> n m"](pos)
+  slot_row: i32[N, MAX]  = tile["m -> n m"](slot)
+  ind     : bf16[N, MAX] = map[ge](pos_col, slot_row)
+  mask    : bf16[N, MAX] = map[log](ind)
+}
